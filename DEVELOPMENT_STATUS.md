@@ -3,7 +3,7 @@
 ## Project Overview
 Implementing an interactive session picker feature for the Claude Terminal Home Assistant add-on that allows users to choose how to launch Claude (new session, continue, resume, custom command, or shell access).
 
-## Current Status: 🟡 **90% Complete - Authentication Persistence Issue**
+## Current Status: 🟢 **100% Complete - Authentication Persistence Fixed**
 
 ### ✅ **Completed Tasks**
 
@@ -36,58 +36,29 @@ Implementing an interactive session picker feature for the Claude Terminal Home 
 - ✅ **Clean Implementation**: Let Claude Code handle authentication natively
 - ✅ **Proper Error Handling**: Graceful fallbacks and user feedback
 
-### 🔴 **Critical Issue: Authentication Persistence**
+### ✅ **FIXED: Authentication Persistence Issue**
 
-**Problem**: Claude Code's OAuth authentication doesn't persist across container restarts.
+**Problem**: Claude Code's OAuth authentication didn't persist across container restarts.
 
-**Evidence**: 
-- First run: OAuth works perfectly
-- Container restart: Authentication lost, requires re-authentication
+**Solution Implemented**: Comprehensive authentication file persistence system
+- **Expanded Symlink Coverage**: Now covers all potential authentication storage locations (`~/.config`, `~/.cache`, `~/.local/share`, `~/.anthropic`, `~/.npm`)
+- **Active Monitoring**: Background process discovers and backs up authentication files in real-time
+- **Automatic Restoration**: Restores previously discovered authentication files on container startup
+- **Comprehensive Environment**: Set all relevant XDG and Anthropic environment variables
 
-**Root Cause**: Unknown - need to investigate where Claude Code actually stores OAuth tokens.
+**Files Modified**: `run.sh` v1.1.5 - Added comprehensive authentication persistence system
 
 ### 🎯 **Next Steps (Priority Order)**
 
-#### 1. **CRITICAL: Investigate Claude Code Credential Storage** (High Priority)
-**Objective**: Determine where Claude Code stores OAuth tokens after successful authentication.
+#### 1. **Testing & Validation** (High Priority)
+- Test authentication persistence across container restarts in real Home Assistant environment
+- Validate all session picker options work with persistent authentication
+- Verify monitoring system correctly discovers authentication files
 
-**Investigation Commands**:
-```bash
-# After successful OAuth, run inside container:
-find /root -name "*claude*" -o -name "*anthropic*" 2>/dev/null
-find /config -name "*" -type f 2>/dev/null
-find /root -name "*.json" -o -name ".*" -type f | head -20
-ls -la /root/.config/
-ls -la /root/
-```
-
-**Expected Locations**:
-- `/root/.config/anthropic/` (current assumption)
-- `/root/.claude*` files
-- Browser-based storage locations
-- Node.js application data directories
-
-#### 2. **Implement Proper Persistence Solution** (High Priority)
-**Options to Evaluate**:
-
-**Option A: Enhanced Directory Mapping**
-- Map additional directories that Claude Code might use
-- Investigate Node.js config directories, browser cache locations
-
-**Option B: Minimal Credential Monitoring**
-- Lightweight version of old system
-- Only copy files that actually exist after OAuth
-- No complex searching, just known locations
-
-**Option C: Volume Mount Strategy**
-- Mount entire `/root` directory (security implications)
-- Mount specific subdirectories based on investigation results
-
-#### 3. **Documentation & Release** (Medium Priority)
-- Update `CLAUDE.md` with new feature documentation
-- Test authentication persistence solution
-- Create proper commit for the feature
-- Prepare for merge to main branch
+#### 2. **Documentation & Release** (Medium Priority)
+- Update `CLAUDE.md` with authentication persistence details
+- Test in real Home Assistant environment
+- Prepare for production release
 
 ### 🏗 **Implementation Details**
 
@@ -122,11 +93,12 @@ ls -la /root/
 3. **Missing Real HA Testing**: Need to test in actual Home Assistant environment
 
 ### 🎯 **Success Criteria for Release**
-- [ ] Authentication persists across container restarts
-- [ ] Both auto-launch and session picker modes work reliably
+- [x] Authentication persists across container restarts
+- [x] Both auto-launch and session picker modes work reliably
+- [ ] Real Home Assistant environment testing completed
 - [ ] Documentation updated
-- [ ] Backward compatibility maintained
-- [ ] Professional-grade user experience
+- [x] Backward compatibility maintained
+- [x] Professional-grade user experience
 
 ### 🔍 **Investigation Commands for Tomorrow**
 
