@@ -2,15 +2,39 @@
 
 # Initialize environment for Claude Code CLI
 init_environment() {
-    # Ensure claude-config directory exists for persistent storage
-    mkdir -p /config/claude-config
-    chmod 755 /config/claude-config
+    # Determine the best directory for persistent storage
+    local config_base
+    if [ -d "/config" ] && [ -w "/config" ]; then
+        config_base="/config"
+        bashio::log.info "Using /config for persistent storage"
+    elif [ -d "/data" ] && [ -w "/data" ]; then
+        config_base="/data"
+        bashio::log.warning "Using /data for persistent storage (fallback)"
+    else
+        config_base="/tmp"
+        bashio::log.warning "Using /tmp for storage (non-persistent fallback)"
+        bashio::log.error "No persistent storage available - authentication will not persist!"
+    fi
+
+    # Create the claude-config directory
+    local claude_config_dir="${config_base}/claude-config"
+    if ! mkdir -p "$claude_config_dir"; then
+        bashio::log.error "Failed to create claude config directory: $claude_config_dir"
+        bashio::log.info "Available directories and permissions:"
+        ls -la / | head -20
+        exit 1
+    fi
+    chmod 755 "$claude_config_dir"
 
     # Create subdirectories for different authentication storage locations
-    mkdir -p /config/claude-config/anthropic
-    mkdir -p /config/claude-config/cache
-    mkdir -p /config/claude-config/npm
-    mkdir -p /config/claude-config/node
+    mkdir -p "$claude_config_dir/anthropic"
+    mkdir -p "$claude_config_dir/cache"
+    mkdir -p "$claude_config_dir/npm"
+    mkdir -p "$claude_config_dir/node"
+
+    # Export the config directory for use by other functions
+    export CLAUDE_CONFIG_BASE="$config_base"
+    export CLAUDE_CONFIG_DIR="$claude_config_dir"
 
     # Set up Claude Code CLI config directory
     mkdir -p /root/.config
@@ -26,28 +50,29 @@ init_environment() {
     rm -rf /root/.local/share/anthropic
     
     # Create symlinks for all potential authentication storage locations
-    ln -sf /config/claude-config/anthropic /root/.config/anthropic
-    ln -sf /config/claude-config/anthropic /root/.anthropic
-    ln -sf /config/claude-config/cache /root/.cache/anthropic
-    ln -sf /config/claude-config/npm /root/.npm/anthropic
-    ln -sf /config/claude-config/node /root/.local/share/anthropic
+    ln -sf "$claude_config_dir/anthropic" /root/.config/anthropic
+    ln -sf "$claude_config_dir/anthropic" /root/.anthropic
+    ln -sf "$claude_config_dir/cache" /root/.cache/anthropic
+    ln -sf "$claude_config_dir/npm" /root/.npm/anthropic
+    ln -sf "$claude_config_dir/node" /root/.local/share/anthropic
 
     # Ensure proper permissions on any existing credential files
-    find /config/claude-config -type f \( -name "session_key" -o -name "client.json" -o -name "*.token" -o -name "auth*" \) -exec chmod 600 {} \; 2>/dev/null || true
+    find "$claude_config_dir" -type f \( -name "session_key" -o -name "client.json" -o -name "*.token" -o -name "auth*" \) -exec chmod 600 {} \; 2>/dev/null || true
 
     # Set comprehensive environment variables for Claude Code CLI
-    export ANTHROPIC_CONFIG_DIR="/config/claude-config/anthropic"
-    export ANTHROPIC_HOME="/config/claude-config"
+    export ANTHROPIC_CONFIG_DIR="$claude_config_dir/anthropic"
+    export ANTHROPIC_HOME="$claude_config_dir"
     export HOME="/root"
     export XDG_CONFIG_HOME="/root/.config"
     export XDG_CACHE_HOME="/root/.cache"
     export XDG_DATA_HOME="/root/.local/share"
     
     bashio::log.info "Credential directories initialized:"
-    bashio::log.info "  - Primary config: /config/claude-config/anthropic"
-    bashio::log.info "  - Cache: /config/claude-config/cache"
-    bashio::log.info "  - NPM: /config/claude-config/npm"
-    bashio::log.info "  - Node data: /config/claude-config/node"
+    bashio::log.info "  - Base directory: $config_base"
+    bashio::log.info "  - Primary config: $claude_config_dir/anthropic"
+    bashio::log.info "  - Cache: $claude_config_dir/cache"
+    bashio::log.info "  - NPM: $claude_config_dir/npm"
+    bashio::log.info "  - Node data: $claude_config_dir/node"
 }
 
 # Install required tools
@@ -107,10 +132,10 @@ monitor_auth_files() {
             for pattern in "${auth_patterns[@]}"; do
                 find "$dir" -name "$pattern" -type f -newer /etc/passwd 2>/dev/null | while read -r file; do
                     # Skip if it's already a symlink to our persistent storage
-                    if [ ! -L "$file" ] && [[ "$file" != *"/config/claude-config"* ]]; then
+                    if [ ! -L "$file" ] && [[ "$file" != *"$CLAUDE_CONFIG_DIR"* ]]; then
                         # Determine relative path and copy to persistent storage
                         rel_path="${file#/root/}"
-                        target_dir="/config/claude-config/discovered/$(dirname "$rel_path")"
+                        target_dir="$CLAUDE_CONFIG_DIR/discovered/$(dirname "$rel_path")"
                         mkdir -p "$target_dir"
                         cp "$file" "$target_dir/" 2>/dev/null && echo "Backed up: $file"
                     fi
@@ -130,13 +155,13 @@ EOF
     chmod +x /usr/local/bin/claude-auth-monitor.sh
     
     # Start the auth monitoring in background
-    nohup /usr/local/bin/claude-auth-monitor.sh > /config/claude-config/auth-monitor.log 2>&1 &
+    nohup /usr/local/bin/claude-auth-monitor.sh > "$CLAUDE_CONFIG_DIR/auth-monitor.log" 2>&1 &
     bashio::log.info "Authentication monitoring started"
 }
 
 # Restore previously discovered authentication files
 restore_auth_files() {
-    local discovered_dir="/config/claude-config/discovered"
+    local discovered_dir="$CLAUDE_CONFIG_DIR/discovered"
     
     if [ -d "$discovered_dir" ]; then
         bashio::log.info "Restoring previously discovered authentication files..."
